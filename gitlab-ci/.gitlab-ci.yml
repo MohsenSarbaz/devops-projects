@@ -1,0 +1,75 @@
+workflow:
+  rules:
+    # Don’t run the pipeline if only README.md changed
+    - changes:
+        - README.md
+      when: never
+
+    # Run only for the main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: always
+
+    # Otherwise, never run
+    - when: never
+    
+variables:
+  ANSIBLE_HOST_KEY_CHECKING: 'false'
+  ANSIBLE_FORCE_COLOR: 'true'
+
+stages:
+  - check-connection
+check-TCP-connection:
+  stage: check-connection
+  image: 192.168.0.110:5050/cd/docker/ansible-custom-image:v2
+
+  before_script:
+    - mkdir -p ~/.ssh
+    - echo "$DEPLOYER_PRIVATE_KEY" >> ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+  script:
+    - cd ansible
+
+    # Initialize JUnit report
+    - |
+      REPORT="../tcp-report.xml"
+      echo '<?xml version="1.0" encoding="UTF-8"?>' > $REPORT
+      echo '<testsuite name="TCP Connectivity Tests">' >> $REPORT
+
+    # Get number of targets
+    - COUNT=$(jq '.targets | length' ../config.json)
+
+    # Loop through all targets
+    - |
+      for i in $(seq 0 $(($COUNT - 1))); do
+        HOST=$(jq -r ".targets[$i].host" ../config.json)
+        PORT=$(jq -r ".targets[$i].port" ../config.json)
+        TEST_NAME="$HOST:$PORT"
+
+        echo "============================================================"
+        echo "Running TCP check for $TEST_NAME"
+        echo "============================================================"
+
+        if ansible-playbook -i inventory/hosts.ini check-status.yml \
+          --extra-vars "host_to_check=$HOST" \
+          --extra-vars "port_to_check=$PORT"; then
+
+          echo "✔ $TEST_NAME reachable"
+          echo "<testcase classname=\"tcp\" name=\"$TEST_NAME\" />" >> $REPORT
+
+        else
+          echo "✖ $TEST_NAME unreachable"
+          echo "<testcase classname=\"tcp\" name=\"$TEST_NAME\">" >> $REPORT
+          echo "<failure message=\"TCP connection failed\" />" >> $REPORT
+          echo "</testcase>" >> $REPORT
+        fi
+      done
+
+    # Close JUnit report
+    - echo '</testsuite>' >> $REPORT
+
+  artifacts:
+    when: always
+    reports:
+      junit: tcp-report.xml

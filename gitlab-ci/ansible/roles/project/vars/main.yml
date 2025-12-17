@@ -1,0 +1,5 @@
+
+
+#List Of Variables
+host_to_check: 192.168.0.125
+port_to_check: 22

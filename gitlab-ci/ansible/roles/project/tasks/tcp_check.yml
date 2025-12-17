@@ -1,0 +1,32 @@
+---
+- name: Check port nc
+  shell: |
+    timeout 5 nc -zv {{ host_to_check }} {{ port_to_check }} 2>&1
+  register: nc_result
+  ignore_errors: yes
+
+- name: Show raw telnet output
+  debug:
+    var: nc_result.stdout
+
+
+# --- Detect Status ---
+- name: Port open
+  debug:
+    #msg: "✔️✔️✔️Port is OPEN ===> {{ host_to_check }} with port {{ port_to_check }} ✔️✔️✔️"
+    #msg: "✔️✔️✔️Port is OPEN ===> From {{ ansible_host }} Connection to {{ host_to_check }}  port {{ port_to_check }}  [tcp/ssh] succeeded!"
+    msg: "Source-IP: {{ ansible_host }} Destination-IP: {{ host_to_check }}  port {{ port_to_check }}  Status: succeeded ✔️✔️✔️"
+  when: nc_result.rc == 0
+
+- name: Port closed
+  debug:
+    #msg: "❕❕❕Connection refused! ===> Port {{ port_to_check }} is  closed on destination server❕❕❕"
+    msg: "Source-IP: {{ ansible_host }} Destination-IP: {{ host_to_check }}  port {{ port_to_check }}  Status: Connection refused! ❕❕❕"
+  when: nc_result.rc == 1
+
+- name: Timeout
+  debug:
+    #msg: "❌❌❌Timeout or no response (Trying...) ❌❌❌ "
+    msg: "Source-IP: {{ ansible_host }} Destination-IP: {{ host_to_check }}  port {{ port_to_check }}  Status: Timeout or no response (Trying...) ❌❌
+❌ "
+  when: nc_result.rc == 124

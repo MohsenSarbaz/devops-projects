@@ -1,0 +1,6 @@
+---
+- hosts: worker-nodes
+  roles:
+  - role: project
+  gather_facts: no
+    #any_errors_fatal: true
