@@ -1,0 +1,88 @@
+
+---
+- name: Set hostname
+  hostname:
+    name: "{{ hostname }}"
+  tags: set_hostname
+
+- name: Add Kubernetes nodes to /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ item.ip }} {{ item.name }}"
+    state: present
+  loop:
+    - { ip: "192.168.0.131", name: "node1" }
+    - { ip: "192.168.0.132", name: "node2" }
+    - { ip: "192.168.0.133", name: "node3" }
+  tags: add_nodes_hosts
+
+- name: Add 127.0.1.1 hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s+'
+    line: "127.0.1.1 {{ hostname }}"
+    state: present
+  tags: correct_hosts
+
+- name: Turn off swap immediately
+  command: swapoff -a
+  tags: off_swap
+
+- name: Ensure swap is disabled on boot
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^\s*(\S+\s+\S+\s+swap\s+\S+\s+\S+\s+\S+)$'
+    replace: '# \1'
+  tags: off_swap
+
+- name: Load br_netfilter module
+  modprobe:
+    name: br_netfilter
+    state: present
+  tags: kernel_modules
+
+- name: Load overlay module
+  modprobe:
+    name: overlay
+    state: present
+  tags: kernel_modules
+
+- name: Ensure br_netfilter and overlay are loaded on boot
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      br_netfilter
+      overlay
+    mode: '0644'
+  tags: kernel_modules
+
+- name: Ensure net.ipv4.ip_forward is enabled
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+    state: present
+    reload: yes
+  tags: ipv4_forward_enable
+
+- name: Reload all sysctl settings
+  command: sysctl --system
+  tags: ipv4_forward_enable
+
+- name: Install essential packages for Kubernetes
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: yes
+  tags: install_prerequisites
+
+- name: Copy nerdctl binary files
+  copy:
+    src: nerdctl
+    dest: /usr/local/bin/nerdctl
+    mode: '0755'
+  tags: copy_nerdctl
+
