@@ -3,3 +3,9 @@ servers_list:
   - node1    # INDEX 0
   - node2    # INDEX 1 
   - node3    # INDEX 2
+
+control_plane_endpoint: "node1:6443"
+apiserver_advertise_address: "192.168.0.131"
+kubernetes_version: "v1.33.5"
+pod_network_cidr: "10.244.0.0/16"
+

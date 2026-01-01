@@ -11,9 +11,9 @@
     line: "{{ item.ip }} {{ item.name }}"
     state: present
   loop:
-    - { ip: "192.168.0.131", name: "node1" }
-    - { ip: "192.168.0.132", name: "node2" }
-    - { ip: "192.168.0.133", name: "node3" }
+    - { ip: "192.168.0.141", name: "node1" }
+    - { ip: "192.168.0.142", name: "node2" }
+    - { ip: "192.168.0.143", name: "node3" }
   tags: add_nodes_hosts
 
 - name: Add 127.0.1.1 hostname
@@ -24,7 +24,7 @@
     state: present
   tags: correct_hosts
 
-- name: Turn off swap immediately
+- name: Turn off swap 
   command: swapoff -a
   tags: off_swap
 
@@ -136,3 +136,53 @@
     mode: '0644'
   tags: completion_bash
 
+
+- name: Initialize Kubernetes control plane
+  command: >
+    kubeadm init
+    --control-plane-endpoint={{ control_plane_endpoint }}
+    --apiserver-advertise-address={{ apiserver_advertise_address }}
+    --kubernetes-version={{ kubernetes_version }}
+    --pod-network-cidr={{ pod_network_cidr }}
+    --upload-certs
+    --apiserver-cert-extra-sans=192.168.0.131,node1
+  args:
+    creates: /etc/kubernetes/admin.conf
+  register: kubeadm_init
+  when: inventory_hostname == "node1"
+  tags: initial_cluster
+    #
+    #- name: Upload certs and get certificate key
+    #  command: kubeadm init phase upload-certs --upload-certs
+    #  register: upload_certs_output
+    #  when: inventory_hostname == "node1"
+    #  tags: initial_cluster
+    #
+    #- name: Set certificate key fact
+    #  set_fact:
+    #    kubeadm_certificate_key: "{{ upload_certs_output.stdout_lines[-1] }}"
+    #  when: inventory_hostname == "node1"
+    #  tags: initial_cluster
+    #
+    #- name: Generate kubeadm join command
+    #  command: kubeadm token create --print-join-command
+    #  register: join_cmd
+    #  when: inventory_hostname == "node1"
+    #  tags: initial_cluster
+    #
+    #- name: Build control-plane join command
+    #  set_fact:
+    #    kubeadm_control_plane_join: >-
+    #      {{ join_cmd.stdout }}
+    #      --control-plane
+    #      --certificate-key {{ kubeadm_certificate_key }}
+    #  when: inventory_hostname == "node1"
+    #  tags: initial_cluster
+    #
+    #- name: Join node to Kubernetes control plane
+    #  command: "{{ hostvars['node1'].kubeadm_control_plane_join }}"
+    #  args:
+    #    creates: /etc/kubernetes/kubelet.conf
+    #  when: inventory_hostname != "node1"
+    #  tags: initial_cluster
+    #
