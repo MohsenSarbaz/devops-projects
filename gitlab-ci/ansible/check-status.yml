@@ -1,4 +1,5 @@
 ---
+
 - hosts: worker-nodes
   roles:
   - role: project

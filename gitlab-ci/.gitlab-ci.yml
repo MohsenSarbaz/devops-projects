@@ -1,75 +1,53 @@
 workflow:
   rules:
-    # Don’t run the pipeline if only README.md changed
-    - changes:
-        - README.md
-      when: never
-
-    # Run only for the main branch
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: $CI_PIPELINE_SOURCE == "web"
       when: always
-
-    # Otherwise, never run
+    - if: $CI_COMMIT_BRANCH
+      when: always
     - when: never
-    
+
 variables:
   ANSIBLE_HOST_KEY_CHECKING: 'false'
   ANSIBLE_FORCE_COLOR: 'true'
+  GIT_STRATEGY: clone
 
 stages:
-  - check-connection
-check-TCP-connection:
-  stage: check-connection
-  image: 192.168.0.110:5050/cd/docker/ansible-custom-image:v2
+  - Check-TCP-Connections
 
-  before_script:
-    - mkdir -p ~/.ssh
-    - echo "$DEPLOYER_PRIVATE_KEY" >> ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+Check-TCP-Connections:
+  stage: Check-TCP-Connections
+  image: 192.168.0.110:5050/cd/docker/ansible-custom-image:v3
+
 
   script:
+    - test -n "$USERNAME" || (echo "Please provide the USERNAME variable" && exit 1)
+    - test -n "$PASSWORD" || (echo "Please provide the PASSWORD variable" && exit 1)
     - cd ansible
+    - REPORT="../tcp-report.csv"
+    - echo "timestamp,source_host,destination_host,destination_port,status" > "$REPORT"
 
-    # Initialize JUnit report
-    - |
-      REPORT="../tcp-report.xml"
-      echo '<?xml version="1.0" encoding="UTF-8"?>' > $REPORT
-      echo '<testsuite name="TCP Connectivity Tests">' >> $REPORT
+    - COUNT=$(jq '.targets | length' ../Destination.json)
 
-    # Get number of targets
-    - COUNT=$(jq '.targets | length' ../config.json)
-
-    # Loop through all targets
+    # Loop through all targets (host + port)
     - |
       for i in $(seq 0 $(($COUNT - 1))); do
-        HOST=$(jq -r ".targets[$i].host" ../config.json)
-        PORT=$(jq -r ".targets[$i].port" ../config.json)
-        TEST_NAME="$HOST:$PORT"
+        HOST=$(jq -r ".targets[$i].host" ../Destination.json)
+        PORT=$(jq -r ".targets[$i].port" ../Destination.json)
 
-        echo "============================================================"
-        echo "Running TCP check for $TEST_NAME"
-        echo "============================================================"
+        echo "================================================================================"
+        echo "Running check for Destination IP: $HOST and Destination PORT:$PORT"
+        echo "================================================================================"
 
-        if ansible-playbook -i inventory/hosts.ini check-status.yml \
+        ansible-playbook -i ../Source.ini check-status.yml \
+          -e "ansible_user=$USERNAME ansible_password=$PASSWORD" \
           --extra-vars "host_to_check=$HOST" \
-          --extra-vars "port_to_check=$PORT"; then
-
-          echo "✔ $TEST_NAME reachable"
-          echo "<testcase classname=\"tcp\" name=\"$TEST_NAME\" />" >> $REPORT
-
-        else
-          echo "✖ $TEST_NAME unreachable"
-          echo "<testcase classname=\"tcp\" name=\"$TEST_NAME\">" >> $REPORT
-          echo "<failure message=\"TCP connection failed\" />" >> $REPORT
-          echo "</testcase>" >> $REPORT
-        fi
+          --extra-vars "port_to_check=$PORT" \
+          --extra-vars "report_path=$REPORT" || true
       done
-
-    # Close JUnit report
-    - echo '</testsuite>' >> $REPORT
 
   artifacts:
     when: always
-    reports:
-      junit: tcp-report.xml
+    expire_in: 1 hour
+    paths:
+      - tcp-report.csv
+
